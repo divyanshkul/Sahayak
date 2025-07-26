@@ -207,3 +207,8 @@ train/
 CLAUDE.md
 .claude/
 *.jpg
+
+*/mcp/media/*
+
+# Secrets folder
+secrets/

@@ -13,7 +13,6 @@ async def upload_photo(
     class_id: str = Form(...)
 ) -> Dict[str, Any]:
     """Upload photo for attendance processing and return attendance data"""
-    # Validate file type
     if not photo.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail="File must be an image")
     

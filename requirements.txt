@@ -14,3 +14,5 @@ pillow
 pandas
 matplotlib
 setuptools
+fastmcp
+manim
