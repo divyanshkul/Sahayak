@@ -1,0 +1,16 @@
+fastapi
+pydantic
+pydantic-settings
+uvicorn
+numpy
+google-adk
+google-cloud-aiplatform
+google-cloud-storage
+face_recognition
+face_recognition_models
+# pip install git+https://github.com/ageitgey/face_recognition_models
+opencv-python
+pillow
+pandas
+matplotlib
+setuptools
