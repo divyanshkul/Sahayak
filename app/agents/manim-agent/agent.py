@@ -140,7 +140,8 @@ class SceneName(Scene):
         self.wait(2)
 ```
 
-Always follow: validate → create → render""",
+Always follow: validate → create → render
+ALways have supporting text in the scene""",
 
         tools=[
             MCPToolset(

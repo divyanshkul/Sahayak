@@ -13,17 +13,66 @@ project_root = current_dir.parent
 agent_path = project_root / "agents" / "manim-agent"
 sys.path.append(str(agent_path))
 
+# Add the shikshak_mitra agent to the path
+shikshak_agent_path = project_root / "agents" / "shikshak_mitra"
+sys.path.append(str(shikshak_agent_path))
+
+# Import manim agent functions
 try:
-    from agent import generate_animation_for_api, extract_video_path
-except ImportError as e:
+    import importlib.util
+    manim_spec = importlib.util.spec_from_file_location("manim_agent", agent_path / "agent.py")
+    manim_module = importlib.util.module_from_spec(manim_spec)
+    manim_spec.loader.exec_module(manim_module)
+    generate_animation_for_api = manim_module.generate_animation_for_api
+    extract_video_path = manim_module.extract_video_path
+except Exception as e:
     print(f"Warning: Could not import manim agent: {e}")
     generate_animation_for_api = None
     extract_video_path = None
+
+# Import shikshak mitra agent functions
+try:
+    shikshak_spec = importlib.util.spec_from_file_location("shikshak_agent", shikshak_agent_path / "agent.py")
+    shikshak_module = importlib.util.module_from_spec(shikshak_spec)
+    shikshak_spec.loader.exec_module(shikshak_module)
+    invoke_shikshak_agent = shikshak_module.invoke_shikshak_agent
+except Exception as e:
+    print(f"Warning: Could not import shikshak mitra agent: {e}")
+    invoke_shikshak_agent = None
 
 router = APIRouter()
 
 class AnimationRequest(BaseModel):
     prompt: str
+
+class ShikshakMitraRequest(BaseModel):
+    question: str
+
+@router.post("/generation-questions")
+async def generation_questions(request: ShikshakMitraRequest) -> Dict[str, Any]:
+    """Generate questions using Shikshak Mitra agent with enhanced RAG and in-context learning"""
+    if not invoke_shikshak_agent:
+        raise HTTPException(status_code=500, detail="Shikshak Mitra agent not available")
+    
+    try:
+        structured_response = await invoke_shikshak_agent(request.question)
+        
+        # Check if we got a structured JSON response or fallback response
+        if "parse_error" in structured_response:
+            return {
+                "request": request.question,
+                "questions": structured_response,
+                "status": "partial_success",
+                "message": "Response generated but JSON parsing failed"
+            }
+        else:
+            return {
+                "request": request.question,
+                "questions": structured_response,
+                "status": "success"
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error invoking Shikshak Mitra agent: {str(e)}")
 
 @router.post("/generate-animation")
 async def generate_animation(request: AnimationRequest) -> Dict[str, Any]:
