@@ -217,34 +217,21 @@ class_id: "class_123"
 
 The system generates contextually relevant questions based on NCERT curriculum:
 
-```json
-{
-  "question_1": {
-    "topic": "Triangles",
-    "question": "What are the three types of triangles based on their sides?"
-  },
-  "question_2": {
-    "topic": "Angles",
-    "question": "If two angles of a triangle are 60° and 80°, what is the third angle?"
-  }
-}
-```
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/0f4c120b-d2ad-4bdf-b4ba-9e18f0df835e" alt="Swipe Left Action" width="250" style="margin: 10px;">
+  <img src="https://github.com/user-attachments/assets/d6b68c57-f502-4120-82bd-016a151a0390" alt="Swipe Right Action" width="250" style="margin: 10px;">
+  <img src="https://github.com/user-attachments/assets/d51a3c5e-0567-4bd4-9bc1-a232714a39c3" alt="Quiz Interface" width="250" style="margin: 10px;">
+</div>
 
 ### Attendance Processing
 
 Upload a class photo and get detailed attendance analysis:
 
-```json
-{
-  "faces_detected": 5,
-  "students_recognized": 3,
-  "attendance_details": {
-    "divyansh": "Present",
-    "harshal": "Present",
-    "kkrishna": "Absent"
-  }
-}
-```
+<div align="center">
+ <img src="https://github.com/user-attachments/assets/3c1e659b-dce5-49f5-a43f-d2fb8827a5ef" alt="Take Attendance" width="300" style="margin: 10px;">
+ <img src="https://github.com/user-attachments/assets/348d5da1-a9cc-4714-a510-81f94a95f488" alt="Attendance Results" width="300" style="margin: 10px;">
+</div>
+
 
 ## 🔧 Configuration
 
