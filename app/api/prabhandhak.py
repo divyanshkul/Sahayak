@@ -1,11 +1,13 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse
 from app.services.attendance.attendance_service import AttendanceService
+from app.agents.prabhandhak_agent.agent import PrabhandhakAgent
 from typing import Dict, Any
 import os
 
 router = APIRouter()
 attendance_service = AttendanceService()
+prabhandhak_agent = PrabhandhakAgent()
 
 @router.post("/attendance/upload-photo")
 async def upload_photo(
@@ -36,3 +38,22 @@ async def get_attendance_image(class_id: str):
         media_type="image/jpeg",
         filename=f"attendance_result_{class_id}.jpg"
     )
+
+
+@router.post("/ocr/process-image")
+async def process_image_ocr(
+    photo: UploadFile = File(...)
+) -> Dict[str, Any]:
+    """Process image for OCR and answer generation using RAG"""
+    if not photo.content_type.startswith('image/'):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    
+    try:
+        # Read image bytes
+        image_bytes = await photo.read()
+        
+        # Process with OCR agent
+        result = await prabhandhak_agent.process_image_ocr(image_bytes)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing image for OCR: {str(e)}")
