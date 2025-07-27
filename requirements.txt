@@ -16,3 +16,17 @@ matplotlib
 setuptools
 fastmcp
 manim
+
+langchain>=0.1.0
+langchain-core>=0.1.0
+langchain-google-vertexai>=0.1.0
+
+langchain-google-firestore>=0.1.0
+google-cloud-firestore>=2.11.0
+google-cloud-aiplatform>=1.38.0
+
+google-auth
+sqlalchemy[asyncio]
+greenlet
+cloud-sql-python-connector
+asyncpg

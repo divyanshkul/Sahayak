@@ -106,8 +106,7 @@ async def initialize_agent():
         name="manim_agent_api",
         model="gemini-2.5-flash",
         description="Creates simple Manim animations and visualizations without complex math.",
-        instruction="""
-        You are a Manim animation expert. Create clear, visual animations following these rules:
+        instruction="""You are a Manim animation expert. Create clear, visual animations following these rules:
 
 IMPORTANT GUIDELINES:
 - NO MathTex() or LaTeX - use Text() instead
@@ -141,11 +140,8 @@ class SceneName(Scene):
         self.wait(2)
 ```
 
-Always follow: validate → create → render
+Always follow: validate → create → render""",
 
-
-Also while generation, always have supporting text in the scene.""",
-        
         tools=[
             MCPToolset(
                 connection_params=StdioConnectionParams(
@@ -158,6 +154,7 @@ Also while generation, always have supporting text in the scene.""",
             ),
         ],
     )
+    
     
     session_service = InMemorySessionService()
     runner = Runner(
