@@ -1,4 +1,4 @@
-# Sahayak AI 🎓
+# Sahayak AI
 
 **Empowering teachers in multi-grade classrooms through AI**
 
@@ -9,13 +9,13 @@
 
 Sahayak AI is a comprehensive AI-powered platform designed specifically for multi-grade classrooms in under-resourced Indian schools. It provides four specialized AI agents to assist teachers in planning, teaching, assessment, and administration.
 
-### 🎯 Problem Statement
+### Problem Statement
 
 - **30%+** of India's government schools operate in Multi-Grade Multi-Level (MGML) model
 - **9%+** are single-teacher schools
 - Teacher shortages, lack of training, and absence of localized materials make effective teaching nearly impossible
 
-### 💡 Solution
+### Solution
 
 An AI-powered multilingual mobile app that supports single teachers handling 3-5 grades simultaneously with:
 
@@ -23,6 +23,45 @@ An AI-powered multilingual mobile app that supports single teachers handling 3-5
 - Regional language support
 - Automated administrative tasks
 - Interactive content generation
+
+## Features Demo
+
+### Question Generation
+
+The system generates contextually relevant questions based on NCERT curriculum:
+
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/0f4c120b-d2ad-4bdf-b4ba-9e18f0df835e" alt="Swipe Left Action" width="250" style="margin: 10px;">
+  <img src="https://github.com/user-attachments/assets/d6b68c57-f502-4120-82bd-016a151a0390" alt="Swipe Right Action" width="250" style="margin: 10px;">
+  <img src="https://github.com/user-attachments/assets/d51a3c5e-0567-4bd4-9bc1-a232714a39c3" alt="Quiz Interface" width="250" style="margin: 10px;">
+</div>
+
+### Attendance Processing
+
+Upload a class photo and get detailed attendance analysis:
+
+<div align="center">
+ <img src="https://github.com/user-attachments/assets/3c1e659b-dce5-49f5-a43f-d2fb8827a5ef" alt="Take Attendance" width="300" style="margin: 10px;">
+ <img src="https://github.com/user-attachments/assets/348d5da1-a9cc-4714-a510-81f94a95f488" alt="Attendance Results" width="300" style="margin: 10px;">
+</div>
+
+## Architecture
+
+### Quiz Generation Flow
+
+The quiz generation pipeline uses NCERT context retrieval, Claude-based grounding, chunking, embeddings, and structured JSON extraction.
+
+<div align="center">
+  <img src="static/In-context-learning.png" alt="Quiz generation in-context learning architecture" width="700">
+</div>
+
+### Manim Video Generation Flow
+
+The animation workflow routes Claude Sonnet 4.5 through MCP tools to create, validate, and render Manim scenes.
+
+<div align="center">
+  <img src="static/manim.png" alt="Manim educational video generator architecture" width="700">
+</div>
 
 ## Four AI Agents
 
@@ -57,9 +96,7 @@ An AI-powered multilingual mobile app that supports single teachers handling 3-5
 - Cultural context integration
 - Personal teaching help chatbot
 
-## 🏗️ Architecture
-
-### Technology Stack
+## Technology Stack
 
 **Frontend:**
 
@@ -85,7 +122,7 @@ An AI-powered multilingual mobile app that supports single teachers handling 3-5
 - Firestore Vector Database
 - PostgreSQL for structured data
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
@@ -182,58 +219,36 @@ photo: [image file]
 class_id: "class_123"
 ```
 
-## 🎯 Key Features
+## Key Features
 
-### 🔍 Face Recognition Attendance
+### Face Recognition Attendance
 
 - Upload class photos for automatic attendance marking
 - Advanced face recognition using trained models
 - Generates attendance reports with visual feedback
 - Automatic parent notifications for low attendance
 
-### 🎬 Mathematical Animation Generation
+### Mathematical Animation Generation
 
 - AI-powered Manim animation creation
 - Mathematical concept visualization
 - Automatic video generation and cloud storage
 - Educational content localization
 
-### 📝 Question Generation with RAG
+### Question Generation with RAG
 
 - NCERT curriculum-aligned question generation
 - Context-aware retrieval from vector database
 - In-context learning with SQL-backed question bank
 - Multi-language support
 
-### 🌐 Multilingual Support
+### Multilingual Support
 
 - Hindi, Marathi, Kannada, Punjabi, and English
 - Cultural context adaptation
 - Regional example generation
 
-## Features Demo
-
-### Question Generation
-
-The system generates contextually relevant questions based on NCERT curriculum:
-
-<div align="center">
-  <img src="https://github.com/user-attachments/assets/0f4c120b-d2ad-4bdf-b4ba-9e18f0df835e" alt="Swipe Left Action" width="250" style="margin: 10px;">
-  <img src="https://github.com/user-attachments/assets/d6b68c57-f502-4120-82bd-016a151a0390" alt="Swipe Right Action" width="250" style="margin: 10px;">
-  <img src="https://github.com/user-attachments/assets/d51a3c5e-0567-4bd4-9bc1-a232714a39c3" alt="Quiz Interface" width="250" style="margin: 10px;">
-</div>
-
-### Attendance Processing
-
-Upload a class photo and get detailed attendance analysis:
-
-<div align="center">
- <img src="https://github.com/user-attachments/assets/3c1e659b-dce5-49f5-a43f-d2fb8827a5ef" alt="Take Attendance" width="300" style="margin: 10px;">
- <img src="https://github.com/user-attachments/assets/348d5da1-a9cc-4714-a510-81f94a95f488" alt="Attendance Results" width="300" style="margin: 10px;">
-</div>
-
-
-## 🔧 Configuration
+## Configuration
 
 ### Environment Variables
 
@@ -256,4 +271,4 @@ Upload a class photo and get detailed attendance analysis:
 - Team: "The Fast and Fourier"
 - Problem Statement: Empowering teachers in multi-grade classrooms
 
-**Made with ❤️ for teachers and students in multi-grade classrooms across India**
+**Made for teachers and students in multi-grade classrooms across India**
