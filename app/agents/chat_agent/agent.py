@@ -1,10 +1,10 @@
 import os
 from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
+from dotenv import load_dotenv
 
-os.environ['LANGCHAIN_TRACING_V2'] = 'true'
-os.environ['LANGCHAIN_ENDPOINT'] = 'https://api.smith.langchain.com'
-os.environ['LANGCHAIN_API_KEY'] = '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'
+# Load environment variables from .env file
+load_dotenv()
 
 # Set up Claude LLM - Using Sonnet 4.5 for best performance
 llm = ChatAnthropic(
