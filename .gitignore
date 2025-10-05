@@ -208,7 +208,12 @@ CLAUDE.md
 .claude/
 *.jpg
 
-*/mcp/media/*
+# Manim media output folders
+app/mcp/media/
+**/mcp/media/
+**/output/
+*.mp4
+*.mov
 
 # Secrets folder
 secrets/

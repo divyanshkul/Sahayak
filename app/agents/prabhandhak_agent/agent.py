@@ -1,17 +1,20 @@
 import os
 import json
-from langchain_google_vertexai import ChatVertexAI, VertexAIEmbeddings
+import vertexai
+from langchain_anthropic import ChatAnthropic
+from langchain_google_vertexai import VertexAIEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_google_firestore import FirestoreVectorStore
 from google.cloud import firestore
+from google.oauth2 import service_account
 import warnings
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
-from google.cloud.sql.connector import Connector
+# from google.cloud.sql.connector import Connector  # Not needed for local PostgreSQL
 from dotenv import load_dotenv
-from google.oauth2 import service_account
+# from google.oauth2 import service_account  # Not needed for local PostgreSQL
 from langchain_core.messages import HumanMessage
 import base64
 from typing import Dict, Any
@@ -21,39 +24,52 @@ class PrabhandhakAgent:
     def __init__(self):
         warnings.filterwarnings('ignore')
         load_dotenv()
-        
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/Users/divyansh/Desktop/Divyansh/Development/Hackathons/AgenticAIDays/final/pragati-backend/secrets/sahayak-ai-credentials.json"
-        
-        self.PROJECT_ID = "sahayak-ai-agentic-ai-day"
+
+        self.PROJECT_ID = "krishi-saarthi-main"
+        self.OLD_PROJECT_ID = "sahayak-ai-agentic-ai-day"
         self.LOCATION = "us-central1"
-        self.SERVICE_ACCOUNT_PATH = "/Users/divyansh/Desktop/Divyansh/Development/Hackathons/AgenticAIDays/final/pragati-backend/secrets/sahayak-ai-sql.json"
-        
-        # Initialize OCR LLM
-        self.llm_ocr = ChatVertexAI(
-            model_name="gemini-2.0-flash-exp",  
-            project=self.PROJECT_ID,
+
+        # New credentials for Vertex AI
+        self.new_credentials_path = "/Users/divyansh/Desktop/Divyansh/Development/Hackathons/AgenticAIDays/final/pragati-backend/secrets/anthropic-sahayak-main-6808fd9290d7.json"
+        # Old credentials for Firestore (has existing indexes)
+        self.old_credentials_path = "/Users/divyansh/Desktop/Divyansh/Development/Hackathons/AgenticAIDays/final/pragati-backend/secrets/older/sahayak-ai-credentials.json"
+
+        # Set environment variable for Vertex AI (new credentials)
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = self.new_credentials_path
+
+        # Initialize Vertex AI with new project (needed for embeddings only)
+        vertexai.init(project=self.PROJECT_ID, location=self.LOCATION)
+
+        # Initialize OCR LLM - Claude Sonnet 4.5 with vision support
+        self.llm_ocr = ChatAnthropic(
+            model="claude-sonnet-4-5-20250929",
             temperature=0,
+            max_tokens=8096,
         )
-        
-        # Set up the main LLM
-        self.llm = ChatVertexAI(
-            model="gemini-2.5-flash",
+
+        # Set up the main LLM - Claude Sonnet 4.5
+        self.llm = ChatAnthropic(
+            model="claude-sonnet-4-5-20250929",
             temperature=0,
-            max_tokens=None,
+            max_tokens=8096,
             max_retries=6,
-            project=self.PROJECT_ID,
-            location=self.LOCATION,
         )
-        
+
         # Set up embeddings model
         self.embeddings_model = VertexAIEmbeddings(
             model_name="text-embedding-004",
             project=self.PROJECT_ID,
             location=self.LOCATION,
         )
-        
-        # Create Firestore client
-        self.client = firestore.Client(project=self.PROJECT_ID)
+
+        # Create Firestore client with OLD credentials (for existing indexes)
+        firestore_credentials = service_account.Credentials.from_service_account_file(
+            self.old_credentials_path
+        )
+        self.client = firestore.Client(
+            project=self.OLD_PROJECT_ID,
+            credentials=firestore_credentials
+        )
         self.collection_name = "thefastandfourier_ncert_final"
         
         # Load vector store
@@ -64,7 +80,7 @@ class PrabhandhakAgent:
         )
         self.retriever = self.vectorstore.as_retriever()
         
-        # Initialize SQL connection
+        # Initialize SQL connection (local PostgreSQL)
         self._init_sql_connection()
         
         # Create the enhanced prompt template
@@ -112,43 +128,21 @@ Instructions:
 JSON Response:
 """)
 
-    def _get_custom_credentials(self):
-        """Load service account credentials"""
-        if not os.path.exists(self.SERVICE_ACCOUNT_PATH):
-            raise FileNotFoundError(f"Service account file not found: {self.SERVICE_ACCOUNT_PATH}")
-        
-        credentials = service_account.Credentials.from_service_account_file(
-            self.SERVICE_ACCOUNT_PATH,
-            scopes=['https://www.googleapis.com/auth/cloud-platform']
-        )
-        return credentials
-
     def _init_sql_connection(self):
-        """Initialize SQL connection"""
-        sql_credentials = self._get_custom_credentials()
-        self.sql_connector = Connector(credentials=sql_credentials)
-        
-        async def getconn():
-            """Create async database connection"""
-            conn = await self.sql_connector.connect_async(
-                "sahayak-ai-agentic-ai-day:asia-south2:sahayak",
-                "asyncpg",
-                user="postgres",
-                password="AquaRegia",
-                db="multigradeschool"
-            )
-            return conn
-        
+        """Initialize SQL connection - Local PostgreSQL"""
+        # Local PostgreSQL connection (no Cloud SQL connector needed)
+        database_url = "postgresql+asyncpg://postgres:AquaRegia@localhost:5432/multigradeschool"
+
         # Create async engine for SQL
         self.sql_engine = create_async_engine(
-            "postgresql+asyncpg://",
-            async_creator=getconn,
+            database_url,
+            echo=False,
         )
 
     async def get_questions_by_vector_id(self, vector_id, limit=3):
         """Fetch top 3 questions from SQL database using vector_id"""
         query = text(f"""
-            SELECT 
+            SELECT
                 q.question,
                 q.chapter_id,
                 q.topic_id,
@@ -161,23 +155,34 @@ JSON Response:
             ORDER BY q.topic_id, q.question_id
             LIMIT {limit};
         """)
-        
-        print(f"\nExecuting SQL query for vector_id: '{vector_id}'")
-        
+
+        print(f"\n{'~'*80}")
+        print(f"💾 PostgreSQL Query for vector_id: '{vector_id}'")
+        print(f"   Database: localhost:5432/multigradeschool")
+        print(f"   Limit: {limit}")
+
         try:
             async with self.sql_engine.begin() as conn:
                 result = await conn.execute(query)
                 questions = result.fetchall()
-                
-                print(f"Found {len(questions)} questions for vector_id '{vector_id}':")
-                for i, (question, chapter_id, topic_id, vec_id, topic_name) in enumerate(questions, 1):
-                    print(f"  {i}. Topic: {topic_name}")
-                    print(f"     Question: {question[:100]}...")
-                    print()
-                
+
+                print(f"   ✅ Found {len(questions)} questions")
+
+                if questions:
+                    print(f"\n   📋 Question Details:")
+                    for i, (question, chapter_id, topic_id, vec_id, topic_name) in enumerate(questions, 1):
+                        print(f"      {i}. Chapter ID: {chapter_id}, Topic ID: {topic_id}")
+                        print(f"         Topic: {topic_name}")
+                        print(f"         Question: {question[:100]}{'...' if len(question) > 100 else ''}")
+                        print()
+                else:
+                    print(f"   ⚠️  No questions found for this vector_id")
+
+                print(f"{'~'*80}\n")
                 return questions
         except Exception as e:
-            print(f"Error fetching questions from SQL: {e}")
+            print(f"   ❌ SQL Error: {e}")
+            print(f"{'~'*80}\n")
             return []
 
     def format_docs_with_metadata(self, docs):
@@ -303,10 +308,18 @@ JSON Response:
             print(f"Extracted Question:\n{extracted_question}\n")
             
             # Use enhanced RAG chain to generate questions
-            print("Processing with Enhanced RAG...")
+            print("\n{'*'*80}")
+            print("🔄 Processing with Enhanced RAG...")
+            print(f"{'*'*80}\n")
+
             questions_response = await self.enhanced_rag_chain(extracted_question)
-            print(f"Generated Questions:\n{questions_response}")
-            
+
+            print(f"\n{'='*80}")
+            print(f"📝 RAW MODEL RESPONSE ({len(questions_response)} chars):")
+            print(f"{'='*80}")
+            print(questions_response)
+            print(f"{'='*80}\n")
+
             # Parse JSON response
             try:
                 # Clean the response to extract only JSON
@@ -317,7 +330,30 @@ JSON Response:
                     questions_json = json.loads(json_str)
                 else:
                     questions_json = json.loads(questions_response)
-            except json.JSONDecodeError:
+
+                print(f"\n{'#'*80}")
+                print(f"✅ SUCCESSFULLY GENERATED {len([k for k in questions_json.keys() if k.startswith('Question_')])} QUESTIONS:")
+                print(f"{'#'*80}")
+
+                for i in range(1, 11):
+                    topic_key = f"Topic_{i}"
+                    question_key = f"Question_{i}"
+                    if topic_key in questions_json and question_key in questions_json:
+                        print(f"\n📌 Question {i}:")
+                        print(f"   Topic: {questions_json[topic_key]}")
+                        print(f"   Question: {questions_json[question_key]}")
+
+                print(f"\n{'#'*80}")
+                print(f"✅ This is the ACTUAL RESPONSE being sent to frontend")
+                print(f"{'#'*80}\n")
+
+            except json.JSONDecodeError as e:
+                print(f"\n{'!'*80}")
+                print(f"⚠️ JSON PARSING FAILED - FALLBACK RESPONSE")
+                print(f"{'!'*80}")
+                print(f"Error: {e}")
+                print(f"Using fallback question!")
+                print(f"{'!'*80}\n")
                 # Fallback if JSON parsing fails
                 questions_json = {
                     "Topic_1": "General Knowledge",
@@ -342,7 +378,6 @@ JSON Response:
         finally:
             # Clean up connections
             try:
-                await self.sql_connector.close_async()
                 await self.sql_engine.dispose()
                 print("\nConnections closed successfully")
             except Exception as cleanup_error:

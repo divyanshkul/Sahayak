@@ -3,7 +3,6 @@ pydantic
 pydantic-settings
 uvicorn
 numpy
-google-adk
 google-cloud-aiplatform
 google-cloud-storage
 face_recognition
@@ -17,15 +16,22 @@ setuptools
 fastmcp
 manim
 
+# LangChain Core
 langchain>=0.1.0
 langchain-core>=0.1.0
-langchain-google-vertexai>=0.1.0
 
+# Claude/Anthropic
+anthropic>=0.39.0
+langchain-anthropic>=0.3.0
+
+# Google Cloud (keep for Firestore, Storage, Embeddings)
+langchain-google-vertexai>=0.1.0
 langchain-google-firestore>=0.1.0
 google-cloud-firestore>=2.11.0
 google-cloud-aiplatform>=1.38.0
-
 google-auth
+
+# Database
 sqlalchemy[asyncio]
 greenlet
 cloud-sql-python-connector

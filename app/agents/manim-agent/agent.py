@@ -2,19 +2,20 @@
 
 import os
 import asyncio
-from google.adk.agents import Agent
-from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioServerParameters, StdioConnectionParams
-from google.adk.sessions import InMemorySessionService
-from google.adk.runners import Runner
-from google.genai import types
+from langchain_anthropic import ChatAnthropic
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from langchain_core.tools import tool
 import warnings
 import logging
 import re
 import uuid
-from typing import Dict, Any
+from typing import Dict, Any, List
 import sys
 from pathlib import Path
 from datetime import datetime
+import json
+import subprocess
 
 # Add parent directory to path to import settings
 current_dir = Path(__file__).parent
@@ -26,46 +27,32 @@ from app.utils.gcp_storage import GCPStorageUploader
 
 # Clean up warnings and logging
 warnings.filterwarnings("ignore")
-logging.getLogger("google.adk.tools.mcp_tool.mcp_tool").setLevel(logging.ERROR)
-logging.getLogger("anyio").setLevel(logging.ERROR)
+logging.basicConfig(level=logging.ERROR)
 
 # Configuration from settings
-print("🔧 Configuring Google AI settings...")
+print("🔧 Configuring Claude AI settings...")
 
-if settings.google_api_key:
-    os.environ["GOOGLE_API_KEY"] = settings.google_api_key
-    print("✅ Google API Key configured")
+if settings.anthropic_api_key:
+    os.environ["ANTHROPIC_API_KEY"] = settings.anthropic_api_key
+    print("✅ Anthropic API Key configured")
 else:
-    print("❌ Warning: Google API Key not found in settings")
-
-os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = settings.google_genai_use_vertexai
-print(f"🔧 Google GenAI Vertex AI mode: {settings.google_genai_use_vertexai}")
-
-if "GEMINI_API_KEY" in os.environ:
-    del os.environ["GEMINI_API_KEY"]
-    print("🗑️ Removed GEMINI_API_KEY from environment")
+    print("❌ Warning: Anthropic API Key not found in settings")
 
 # Use relative paths from settings
-MANIM_SERVER_PATH = settings.manim_server_path or os.path.join(project_root, "app", "mcp", "manim_mcp.py")
-PYTHON_ENV_PATH = settings.python_env_path or "python3"
+MANIM_EXECUTABLE = settings.manim_executable or "manim"
+MANIM_MEDIA_DIR = os.path.join(project_root, "app", "mcp", "media")
 
-print(f"📁 Manim Server Path: {MANIM_SERVER_PATH}")
-print(f"🐍 Python Environment Path: {PYTHON_ENV_PATH}")
+print(f"🎬 Manim Executable: {MANIM_EXECUTABLE}")
+print(f"📁 Manim Media Directory: {MANIM_MEDIA_DIR}")
 
 # Validate critical configurations
-if not settings.google_api_key:
-    print("⚠️ WARNING: Missing Google API Key - Manim agent may not function properly")
-if not os.path.exists(MANIM_SERVER_PATH):
-    print(f"⚠️ WARNING: Manim server not found at {MANIM_SERVER_PATH}")
-else:
-    print("✅ Manim server found")
+if not settings.anthropic_api_key:
+    print("⚠️ WARNING: Missing Anthropic API Key - Manim agent may not function properly")
 
-print("🏁 Google AI configuration completed")
+print("🏁 Claude AI configuration completed")
 
 # Global variables
-manim_agent = None
-session_service = None
-runner = None
+manim_llm = None
 
 def extract_video_path(response_text):
     """Extract video file path from agent response"""
@@ -98,21 +85,120 @@ def extract_video_path(response_text):
     print("❌ No video path found in response")
     return None
 
+def create_manim_scene_code(scene_name: str, scene_code: str) -> str:
+    """Create a Python file with Manim scene code"""
+    scene_dir = os.path.join(MANIM_MEDIA_DIR, f"scene_{scene_name}")
+    os.makedirs(scene_dir, exist_ok=True)
+
+    scene_file = os.path.join(scene_dir, f"{scene_name}.py")
+
+    with open(scene_file, 'w') as f:
+        f.write(scene_code)
+
+    return scene_file
+
+def render_manim_scene(scene_file: str, scene_name: str, quality: str = "1080p60") -> Dict[str, Any]:
+    """Render a Manim scene and return the video path"""
+    try:
+        scene_dir = os.path.dirname(scene_file)
+
+        # Run Manim command
+        cmd = [
+            MANIM_EXECUTABLE,
+            scene_file,
+            scene_name,
+            "-qh",  # High quality
+            "-o", f"{scene_name}.mp4",
+            "--media_dir", os.path.join(scene_dir, "output")
+        ]
+
+        print(f"🎬 Rendering Manim scene: {' '.join(cmd)}")
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=180
+        )
+
+        if result.returncode == 0:
+            # Find the output video
+            video_dir = os.path.join(scene_dir, "output", "videos", scene_name, quality)
+            video_file = os.path.join(video_dir, f"{scene_name}.mp4")
+
+            if os.path.exists(video_file):
+                return {
+                    "status": "success",
+                    "video_path": video_file,
+                    "message": "Scene rendered successfully"
+                }
+            else:
+                # Search for any mp4 file
+                for file in os.listdir(video_dir) if os.path.exists(video_dir) else []:
+                    if file.endswith('.mp4'):
+                        video_file = os.path.join(video_dir, file)
+                        return {
+                            "status": "success",
+                            "video_path": video_file,
+                            "message": "Scene rendered successfully"
+                        }
+
+                return {
+                    "status": "error",
+                    "message": f"Video file not found after rendering. Expected: {video_file}",
+                    "stdout": result.stdout,
+                    "stderr": result.stderr
+                }
+        else:
+            return {
+                "status": "error",
+                "message": f"Manim rendering failed with code {result.returncode}",
+                "stdout": result.stdout,
+                "stderr": result.stderr
+            }
+
+    except subprocess.TimeoutExpired:
+        return {
+            "status": "error",
+            "message": "Manim rendering timed out after 180 seconds"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error rendering scene: {str(e)}"
+        }
+
 async def initialize_agent():
-    """Initialize the Manim agent and session"""
-    global manim_agent, session_service, runner
-    
-    manim_agent = Agent(
-        name="manim_agent_api",
-        model="gemini-2.5-flash",
-        description="Creates simple Manim animations and visualizations without complex math.",
-        instruction="""You are a Manim animation expert. Create clear, visual animations following these rules:
+    """Initialize the Claude LLM for Manim generation"""
+    global manim_llm
+
+    manim_llm = ChatAnthropic(
+        model="claude-sonnet-4-5-20250929",
+        temperature=0.3,
+        max_tokens=8096,
+    )
+
+async def generate_animation_for_api(prompt: str) -> Dict[str, Any]:
+    """Generate animation from prompt for API use"""
+    # Initialize agent if not already done
+    if not manim_llm:
+        await initialize_agent()
+
+    # Generate unique scene name
+    scene_name = f"Scene_{uuid.uuid4().hex[:6]}"
+
+    print(f"🎬 Starting animation generation for scene: {scene_name}")
+    print(f"📝 User prompt: {prompt}")
+
+    try:
+        # Create prompt for Claude to generate Manim code
+        system_prompt = """You are a Manim animation expert. Generate Python code for Manim animations following these rules:
 
 IMPORTANT GUIDELINES:
+- Import: from manim import *
 - NO MathTex() or LaTeX - use Text() instead
 - For multiple objects, position them using coordinates (e.g., UP, DOWN, LEFT, RIGHT)
 - Use clear timing with self.wait() between actions
-- Always validate scene code before creating it
 - Use all the shapes you know to generate real life objects, like use ellipse for clouds etc.
 
 POSITIONING TIPS:
@@ -123,220 +209,140 @@ POSITIONING TIPS:
 
 EXAMPLE STRUCTURE:
 ```python
+from manim import *
+
 class SceneName(Scene):
     def construct(self):
         # Create objects
         circle = Circle().shift(LEFT*2)
         square = Square().shift(RIGHT*2)
-        
+
         # Animate them
         self.play(Create(circle))
         self.wait(0.5)
         self.play(Create(square))
         self.wait(1)
-        
+
         # Transform or move
         self.play(Transform(circle, square.copy().shift(LEFT*2)))
         self.wait(2)
 ```
 
-Always follow: validate → create → render
-ALways have supporting text in the scene""",
+Always have supporting text in the scene. Return ONLY the Python code, no explanations."""
 
-        tools=[
-            MCPToolset(
-                connection_params=StdioConnectionParams(
-                    server_params=StdioServerParameters(
-                        command=PYTHON_ENV_PATH,
-                        args=[MANIM_SERVER_PATH],
-                    ),
-                    timeout=200,
-                ),
-            ),
-        ],
-    )
-    
-    
-    session_service = InMemorySessionService()
-    runner = Runner(
-        agent=manim_agent,
-        app_name="manim_api_app",
-        session_service=session_service
-    )
+        user_prompt = f"Create a Manim scene class named '{scene_name}' that: {prompt}"
 
-async def generate_animation_for_api(prompt: str) -> Dict[str, Any]:
-    """Generate animation from prompt for API use"""
-    # Initialize agent if not already done
-    if not manim_agent:
-        await initialize_agent()
-    
-    # Generate unique session ID and scene name
-    session_id = f"session_{uuid.uuid4().hex[:8]}"
-    user_id = "api_user"
-    scene_name = f"Scene_{uuid.uuid4().hex[:6]}"
-    
-    print(f"🎬 Starting animation generation for scene: {scene_name}")
-    print(f"📝 User prompt: {prompt}")
-    
-    # Create session
-    await session_service.create_session(
-        app_name="manim_api_app",
-        user_id=user_id,
-        session_id=session_id
-    )
-    
-    # Create full prompt
-    full_prompt = f"Create a scene called '{scene_name}': {prompt}"
-    
-    print(f"🤖 Sending to agent: {full_prompt}")
-    
-    try:
-        # Prepare message
-        content = types.Content(role='user', parts=[types.Part(text=full_prompt)])
-        
-        final_response_text = "Agent did not produce a final response."
-        tool_calls = []
-        
-        print("🔄 Agent execution started...")
-        
-        # Execute agent
-        async for event in runner.run_async(user_id=user_id, session_id=session_id, new_message=content):
-            # Log event details
-            event_author = getattr(event, 'author', 'unknown')
-            print(f"📡 Agent event from: {event_author}")
-            
-            # Check for content in the event
-            if hasattr(event, 'content') and event.content:
-                if hasattr(event.content, 'parts') and event.content.parts:
-                    for part in event.content.parts:
-                        if hasattr(part, 'function_call'):
-                            tool_calls.append(part.function_call)
-                            tool_name = getattr(part.function_call, 'name', 'unknown_tool')
-                            print(f"🛠️ Tool called: {tool_name}")
-                        elif hasattr(part, 'function_response'):
-                            tool_result = getattr(part.function_response, 'response', 'no response')
-                            print(f"🔧 Tool result: {tool_result}")
-            
-            # Check for actions (state changes, escalations, etc.)
-            if hasattr(event, 'actions') and event.actions:
-                if hasattr(event.actions, 'escalate') and event.actions.escalate:
-                    print(f"⚠️ Agent escalated")
-                if hasattr(event.actions, 'state_delta'):
-                    print(f"📊 State change detected")
-            
-            # Check if this is the final response
-            if event.is_final_response():
-                if event.content and event.content.parts:
-                    final_response_text = event.content.parts[0].text
-                    print(f"✅ Agent final response received")
-                elif hasattr(event, 'actions') and event.actions and hasattr(event.actions, 'escalate'):
-                    final_response_text = f"Agent escalated: {getattr(event, 'error_message', 'No specific message.')}"
-                    print(f"⚠️ Agent escalated")
-                break
-        
-        print(f"🔍 Agent response: {final_response_text}")
-        
-        # Extract video path from response
-        video_path = extract_video_path(final_response_text)
-        print(f"🎯 Extracted video path: {video_path}")
-        
-        # If no video path in response, check the media directory for the scene
-        if not video_path:
-            # Use the working path that we know exists
-            media_dir = os.path.join("app", "mcp", "media", f"scene_{scene_name}")
-            
-            if os.path.exists(media_dir):
-                # Direct path to expected video location: output/videos/SceneName/1080p60/
-                video_dir = os.path.join(media_dir, "output", "videos", scene_name, "1080p60")
-                
-                if os.path.exists(video_dir):
-                    video_file = os.path.join(video_dir, f"{scene_name}.mp4")
-                    
-                    if os.path.exists(video_file):
-                        video_path = video_file
-                        print(f"📹 Found video file: {video_path}")
+        messages = [
+            HumanMessage(content=f"{system_prompt}\n\n{user_prompt}")
+        ]
+
+        print("🤖 Generating Manim code with Claude...")
+
+        # Get response from Claude
+        response = await manim_llm.ainvoke(messages)
+        scene_code = response.content
+
+        print(f"✅ Received scene code ({len(scene_code)} chars)")
+
+        # Extract Python code if wrapped in markdown
+        if "```python" in scene_code:
+            scene_code = scene_code.split("```python")[1].split("```")[0].strip()
+        elif "```" in scene_code:
+            scene_code = scene_code.split("```")[1].split("```")[0].strip()
+
+        # Ensure it has the import
+        if "from manim import" not in scene_code:
+            scene_code = "from manim import *\n\n" + scene_code
+
+        print("📝 Creating scene file...")
+        scene_file = create_manim_scene_code(scene_name, scene_code)
+        print(f"✅ Scene file created: {scene_file}")
+
+        print("🎬 Rendering scene...")
+        render_result = render_manim_scene(scene_file, scene_name)
+
+        if render_result["status"] == "success":
+            video_path = render_result["video_path"]
+            print(f"✅ Video rendered: {video_path}")
+
+            # Upload to GCP if video exists
+            public_video_url = None
+            gcp_upload_status = "skipped"
+
+            if settings.gcp_bucket_name and settings.gcp_credentials_path:
+                try:
+                    print(f"🚀 Uploading video to GCP Storage...")
+
+                    # Create timestamp-based folder structure
+                    current_date = datetime.now().strftime("%Y-%m-%d")
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    folder_path = f"manim-animations/{current_date}/{timestamp}"
+
+                    # Initialize uploader
+                    uploader = GCPStorageUploader(
+                        bucket_name=settings.gcp_bucket_name,
+                        credentials_path=settings.gcp_credentials_path
+                    )
+
+                    # Upload video with public access
+                    upload_result = uploader.upload_file(
+                        file_path=video_path,
+                        destination_blob_name="video.mp4",
+                        make_public=True,
+                        folder=folder_path
+                    )
+
+                    if upload_result:
+                        if upload_result.startswith("gs://"):
+                            gs_parts = upload_result.replace("gs://", "").split("/", 1)
+                            bucket_name = gs_parts[0]
+                            file_path_gcp = gs_parts[1] if len(gs_parts) > 1 else ""
+                            public_video_url = f"https://storage.googleapis.com/{bucket_name}/{file_path_gcp}"
+                        else:
+                            public_video_url = upload_result
+
+                        gcp_upload_status = "success"
+                        print(f"✅ Video uploaded successfully: {public_video_url}")
                     else:
-                        # Take the first .mp4 file if scene name doesn't match exactly
-                        files = os.listdir(video_dir)
-                        for file in files:
-                            if file.endswith('.mp4'):
-                                video_path = os.path.join(video_dir, file)
-                                print(f"📹 Found video file: {video_path}")
-                                break
-        
-        video_exists = video_path and os.path.exists(video_path) if video_path else False
-        
-        # Upload to GCP if video exists
-        public_video_url = None
-        gcp_upload_status = "skipped"
-        
-        if video_exists and settings.gcp_bucket_name and settings.gcp_credentials_path:
-            try:
-                print(f"🚀 Uploading video to GCP Storage...")
-                
-                # Create timestamp-based folder structure
-                current_date = datetime.now().strftime("%Y-%m-%d")
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                folder_path = f"manim-animations/{current_date}/{timestamp}"
-                
-                # Initialize uploader
-                uploader = GCPStorageUploader(
-                    bucket_name=settings.gcp_bucket_name,
-                    credentials_path=settings.gcp_credentials_path
-                )
-                
-                # Upload video with public access
-                upload_result = uploader.upload_file(
-                    file_path=video_path,
-                    destination_blob_name="video.mp4",
-                    make_public=True,
-                    folder=folder_path
-                )
-                
-                if upload_result:
-                    if upload_result.startswith("gs://"):
-                        gs_parts = upload_result.replace("gs://", "").split("/", 1)
-                        bucket_name = gs_parts[0]
-                        file_path = gs_parts[1] if len(gs_parts) > 1 else ""
-                        public_video_url = f"https://storage.googleapis.com/{bucket_name}/{file_path}"
-                    else:
-                        public_video_url = upload_result
-                    
-                    gcp_upload_status = "success"
-                    print(f"✅ Video uploaded successfully: {public_video_url}")
-                else:
+                        gcp_upload_status = "failed"
+                        print(f"❌ Video upload failed")
+
+                except Exception as e:
                     gcp_upload_status = "failed"
-                    print(f"❌ Video upload failed")
-                    
-            except Exception as e:
-                gcp_upload_status = "failed"
-                print(f"❌ Error uploading video to GCP: {str(e)}")
-        elif video_exists:
-            print(f"⚠️ GCP upload skipped - missing bucket name or credentials")
-        
-        result = {
-            "scene_name": scene_name,
-            "prompt": prompt,
-            "agent_response": final_response_text,
-            "video_path": video_path,
-            "video_exists": video_exists,
-            "public_video_url": public_video_url,
-            "gcp_upload_status": gcp_upload_status,
-            "tool_calls_made": len(tool_calls),
-            "processing_status": "success" if video_exists else "failed"
-        }
-        
-        if result["video_exists"]:
-            print(f"✅ Animation created successfully: {video_path}")
+                    print(f"❌ Error uploading video to GCP: {str(e)}")
+            else:
+                print(f"⚠️ GCP upload skipped - missing bucket name or credentials")
+
+            return {
+                "scene_name": scene_name,
+                "prompt": prompt,
+                "agent_response": f"Scene created successfully with Claude",
+                "scene_code": scene_code,
+                "video_path": video_path,
+                "video_exists": True,
+                "public_video_url": public_video_url,
+                "gcp_upload_status": gcp_upload_status,
+                "processing_status": "success"
+            }
         else:
-            print(f"❌ Video file not found after processing")
-            print(f"🔍 Checked path: {video_path}")
-            print(f"📋 Agent response: {final_response_text}")
-        
-        return result
-        
+            print(f"❌ Rendering failed: {render_result['message']}")
+            return {
+                "scene_name": scene_name,
+                "prompt": prompt,
+                "agent_response": render_result["message"],
+                "scene_code": scene_code,
+                "video_path": None,
+                "video_exists": False,
+                "public_video_url": None,
+                "gcp_upload_status": "skipped",
+                "processing_status": "error",
+                "error_details": render_result
+            }
+
     except Exception as e:
         print(f"❌ Error generating animation: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return {
             "scene_name": scene_name,
             "prompt": prompt,
@@ -345,7 +351,6 @@ async def generate_animation_for_api(prompt: str) -> Dict[str, Any]:
             "video_exists": False,
             "public_video_url": None,
             "gcp_upload_status": "skipped",
-            "tool_calls_made": 0,
             "processing_status": "error"
         }
 
