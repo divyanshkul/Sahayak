@@ -12,13 +12,12 @@ class AttendanceService:
     """Service class for handling attendance-related operations"""
     
     def __init__(self):
-        self.known_students = {
-            "class_123": ["divyansh", "harshal", "kkrishna", "siddhant", "yash"],
-            "class_001": ["divyansh", "harshal", "kkrishna", "siddhant", "yash"]
-        }
+        self.known_students = {}
         self.known_encodings = {}
         self.train_images_path = "train/"
         self._load_training_images()
+        # Populate known_students from loaded encodings
+        self._populate_known_students()
     
     def _load_training_images(self):
         """Load training images an
@@ -53,7 +52,22 @@ class AttendanceService:
                     print(f"❌ Error processing {filename}: {str(e)}")
         
         print(f"📚 Total students loaded: {len(self.known_encodings)}")
-    
+
+    def _populate_known_students(self):
+        """Populate known_students dictionary based on loaded encodings"""
+        if not self.known_encodings:
+            print("⚠️  No encodings loaded, cannot populate known_students")
+            return
+
+        all_students = list(self.known_encodings.keys())
+
+        self.known_students = {
+            "class_123": all_students.copy(),
+            "class_001": all_students.copy()
+        }
+
+        print(f"👥 Populated known_students with {len(all_students)} students for each class")
+
     def calculate_attendance_from_photo(self, image_data: bytes, class_id: str) -> Tuple[Dict[str, str], List[str], int, str]:
         """
         ML logic to calculate attendance from photo
